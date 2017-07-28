@@ -116,6 +116,9 @@ private:
   boost::mutex waiting_mutex_;
   boost::condition_variable waiting_cond_;
   boost::thread_group tg_;
+#ifdef NODELET_QUEUE_DEBUG
+  FILE* manager_debug_file_;
+#endif
 
   struct ThreadInfo
   {
@@ -130,18 +133,23 @@ private:
     boost::detail::atomic_count calling;
 
 #ifdef NODELET_QUEUE_DEBUG
+
     struct Record
     {
-      Record(double stamp, uint32_t tasks, bool threaded)
-        : stamp(stamp), tasks(tasks), threaded(threaded)
+      Record(double stamp, uint32_t tasks, bool threaded, uint64_t from_q_ptr, uint64_t to_th_ptr)
+        : stamp(stamp), tasks(tasks), threaded(threaded), from_q_ptr(from_q_ptr), to_th_ptr(to_th_ptr)
       {}
 
       double stamp;
       uint32_t tasks;
       bool threaded;
+      uint64_t from_q_ptr;
+      uint64_t to_th_ptr;
     };
 
     std::vector<Record> history;
+
+    FILE* worker_debug_file_;
 #endif
 
     // Pad sizeof(ThreadInfo) to be a multiple of 64 (cache line size) to avoid false sharing.

@@ -311,6 +311,7 @@ bool Loader::load(const std::string &name, const std::string& type, const ros::M
 
   ManagedNodelet* mn = new ManagedNodelet(p, impl_->callback_manager_.get());
   impl_->nodelets_.insert(const_cast<std::string&>(name), mn); // mn now owned by boost::ptr_map
+  ROS_INFO("nodelet-stq-mtq %s %llx %llx\n", name.c_str(), mn->st_queue.get(), mn->mt_queue.get());
   try {
     p->init(name, remappings, my_argv, mn->st_queue.get(), mn->mt_queue.get());
     /// @todo Can we delay processing the queues until Nodelet::onInit() returns?

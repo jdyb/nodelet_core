@@ -66,8 +66,9 @@ CallbackQueueManager::~CallbackQueueManager()
 
 #ifdef NODELET_QUEUE_DEBUG
   // Write out task assignment histories for each thread
+  fclose(manager_debug_file_);
   typedef ThreadInfo::Record Record;
-  for (size_t i = 0; i < num_threads; ++i)
+  for (size_t i = 0; i < num_worker_threads_; ++i)
   {
     char filename[128];
     sprintf(filename, "thread_history_%d.txt", (int)i);
@@ -77,7 +78,7 @@ CallbackQueueManager::~CallbackQueueManager()
     for (int j = 0; j < (int)history.size(); ++j)
     {
       Record r = history[j];
-      fprintf(file, "%.6f %u %d\n", r.stamp, r.tasks, (int)r.threaded);
+      fprintf(file, "%.6f %u %d %llx %llx\n", r.stamp, r.tasks, (int)r.threaded, r.from_q_ptr, r.to_th_ptr);
     }
     fclose(file);
   }
@@ -164,6 +165,10 @@ void CallbackQueueManager::managerThread()
 {
   V_Queue local_waiting;
 
+#ifdef NODELET_QUEUE_DEBUG
+  manager_debug_file_ = fopen("manager_history.txt", "w");
+#endif
+
   while (running_)
   {
     {
@@ -181,6 +186,12 @@ void CallbackQueueManager::managerThread()
 
       local_waiting.swap(waiting_);
     }
+
+#ifdef NODELET_QUEUE_DEBUG
+      /* Log the number of queues that are waiting. */
+      fprintf(manager_debug_file_, "lq %.6f %u\n", ros::WallTime::now().toSec(), local_waiting.size());
+      fflush(manager_debug_file_);
+#endif
 
     {
       boost::mutex::scoped_lock lock(queues_mutex_);
@@ -228,7 +239,9 @@ void CallbackQueueManager::managerThread()
 #ifdef NODELET_QUEUE_DEBUG
             double stamp = ros::WallTime::now().toSec();
             uint32_t tasks = ti->calling;
-            ti->history.push_back(ThreadInfo::Record(stamp, tasks, true));
+            ti->history.push_back(ThreadInfo::Record(stamp, tasks, true,
+				    (uint64_t) queue.get(),
+				    (uint64_t) ti));
 #endif
           }
 
@@ -244,6 +257,12 @@ void CallbackQueueManager::managerThread()
 void CallbackQueueManager::workerThread(ThreadInfo* info)
 {
   std::vector<std::pair<CallbackQueuePtr, QueueInfoPtr> > local_queues;
+
+#ifdef NODELET_QUEUE_DEBUG
+  char s[128];
+  sprintf(s, "worker_%llx.txt", (uint64_t) info);
+  info->worker_debug_file_ = fopen(s, "w");
+#endif
 
   while (running_)
   {
@@ -263,17 +282,32 @@ void CallbackQueueManager::workerThread(ThreadInfo* info)
       info->queue.swap(local_queues);
     }
 
+#ifdef NODELET_QUEUE_DEBUG
+      /* Log the number of queues that we got. */
+      fprintf(info->worker_debug_file_, "ql %.6f %u\n", ros::WallTime::now().toSec(), local_queues.size());
+      fflush(info->worker_debug_file_);
+#endif
+
     std::vector<std::pair<CallbackQueuePtr, QueueInfoPtr> >::iterator it = local_queues.begin();
     std::vector<std::pair<CallbackQueuePtr, QueueInfoPtr> >::iterator end = local_queues.end();
     for (; it != end; ++it)
     {
       CallbackQueuePtr& queue = it->first;
       QueueInfoPtr& qi = it->second;
-      if (queue->callOne() == ros::CallbackQueue::TryAgain)
+
+      double t0 = ros::WallTime::now().toSec();
+
+      int r = queue->callOne();
+      if (r == ros::CallbackQueue::TryAgain)
       {
         callbackAdded(queue);
       }
       --info->calling;
+
+#ifdef NODELET_QUEUE_DEBUG
+      fprintf(info->worker_debug_file_, "c %.6f %.6f %p %u\n", ros::WallTime::now().toSec(), t0, queue.get(), r);
+      fflush(info->worker_debug_file_);
+#endif
 
       if (!qi->threaded)
       {
@@ -285,6 +319,7 @@ void CallbackQueueManager::workerThread(ThreadInfo* info)
     local_queues.clear();
 
   }
+  fclose(info->worker_debug_file_);
 }
 
 } // namespace detail

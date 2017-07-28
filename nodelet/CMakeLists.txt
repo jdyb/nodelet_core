@@ -26,7 +26,7 @@ catkin_package(
 include_directories(include ${catkin_INCLUDE_DIRS} ${BOOST_INCLUDE_DIRS})
 
 # Debug only, collects stats on how callbacks are doled out to worker threads
-#add_definitions(-DNODELET_QUEUE_DEBUG)
+add_definitions(-DNODELET_QUEUE_DEBUG)
 
 add_library(nodeletlib src/nodelet_class.cpp src/loader.cpp src/callback_queue.cpp src/callback_queue_manager.cpp)
 target_link_libraries(nodeletlib ${catkin_LIBRARIES} ${BOOST_LIBRARIES})
